@@ -1,0 +1,224 @@
+<title>R6 Scrim Stats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one column - header, map tabs, summary tiles, player table, side split + match list. Same look as the
+   coach's review page (LocalAI-Agent tokens), dark first, with a light theme. */
+:root {
+  --bg: #0E1014; --surface: #15181E; --surface-2: #1B1F27; --line: #272C36; --line-soft: #22262F;
+  --text: #E7E9ED; --muted: #A0A7B4; --hint: #858D9B; --accent: #4DB2FF; --accent-ink: #B0DEFF; --accent-bg: #132B40;
+  --win: #52C98E; --win-bg: #14211B; --loss: #FF8F86; --loss-bg: #2A1716; --warn: #F2B04A;
+  --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg: #F5F7FA; --surface: #FFFFFF; --surface-2: #EEF2F7; --line: #D7DDE6; --line-soft: #E6EAF0;
+  --text: #161A21; --muted: #4F5866; --hint: #6B7482; --accent: #1773C4; --accent-ink: #0F4E86; --accent-bg: #E3F0FB;
+  --win: #1E8A57; --win-bg: #E5F5EC; --loss: #C2392F; --loss-bg: #FBE9E7; --warn: #A86A08; color-scheme: light; } }
+:root[data-theme="light"] {
+  --bg: #F5F7FA; --surface: #FFFFFF; --surface-2: #EEF2F7; --line: #D7DDE6; --line-soft: #E6EAF0;
+  --text: #161A21; --muted: #4F5866; --hint: #6B7482; --accent: #1773C4; --accent-ink: #0F4E86; --accent-bg: #E3F0FB;
+  --win: #1E8A57; --win-bg: #E5F5EC; --loss: #C2392F; --loss-bg: #FBE9E7; --warn: #A86A08; color-scheme: light; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 48px; display: grid; gap: 28px; }
+h1 { font-size: 26px; font-weight: 600; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h2 { font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+.mono, .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.hint { color: var(--hint); }
+header { display: grid; gap: 6px; }
+.meta { color: var(--muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.notice { font-size: 13px; color: var(--warn); }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs button { font: inherit; font-size: 14px; color: var(--muted); background: transparent; border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 14px; cursor: pointer; }
+.tabs button:hover { color: var(--text); }
+.tabs button[aria-pressed="true"] { background: var(--accent-bg); border-color: var(--accent); color: var(--accent-ink); }
+.tabs button:focus-visible, th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tabs .pool { font-size: 11px; color: var(--hint); margin-left: 4px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px; background: var(--line);
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.tile { background: var(--surface); padding: 14px 16px; display: grid; gap: 2px; align-content: start; }
+.tile .label { font-size: 13px; color: var(--muted); }
+.tile .value { font-size: 28px; font-weight: 600; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.tile .base { font-size: 12px; color: var(--hint); }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 9px 12px; text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); }
+thead th { border-bottom: 1px solid var(--line); font-weight: 500; font-size: 12px; color: var(--muted); }
+th button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+th[aria-sort] button { color: var(--text); }
+tbody tr + tr td { border-top: 1px solid var(--line-soft); }
+td .n { color: var(--hint); font-size: 12px; margin-left: 3px; }
+td.player { font-weight: 500; }
+td.ops { text-align: left; color: var(--muted); font-family: var(--sans); }
+.kost-bar { display: inline-block; width: 48px; height: 6px; border-radius: 3px; background: var(--surface-2); margin-left: 8px;
+  vertical-align: middle; overflow: hidden; }
+.kost-bar i { display: block; height: 100%; background: var(--accent); }
+
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 28px; align-items: start; }
+@media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+.sides { display: grid; gap: 10px; }
+.side-row { display: grid; grid-template-columns: 80px 1fr auto; gap: 12px; align-items: center; font-size: 14px; }
+.side-row .track { height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
+.side-row .track i { display: block; height: 100%; background: var(--accent); }
+.matches { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.matches li { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 12px; padding: 9px 14px; align-items: center; font-size: 14px; }
+.matches li + li { border-top: 1px solid var(--line-soft); }
+.matches .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result { font-family: var(--mono); font-size: 13px; padding: 1px 8px; border-radius: 999px; }
+.result.w { color: var(--win); background: var(--win-bg); }
+.result.l { color: var(--loss); background: var(--loss-bg); }
+.result.d { color: var(--muted); background: var(--surface-2); }
+footer { font-size: 13px; color: var(--hint); display: grid; gap: 6px; max-width: 72ch; }
+footer b { color: var(--muted); font-weight: 500; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1 id="title">Scrim stats</h1>
+    <div class="meta" id="meta"></div>
+    <div class="notice" id="notice" hidden></div>
+  </header>
+
+  <nav class="tabs" id="tabs" aria-label="Map"></nav>
+
+  <section aria-labelledby="h-team">
+    <h2 id="h-team">Team</h2>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section aria-labelledby="h-players">
+    <h2 id="h-players">Players</h2>
+    <div class="tablewrap"><table id="players"></table></div>
+  </section>
+
+  <div class="split">
+    <section aria-labelledby="h-sides">
+      <h2 id="h-sides">Round win rate by side</h2>
+      <div class="sides" id="sides"></div>
+    </section>
+    <section aria-labelledby="h-matches">
+      <h2 id="h-matches">Matches</h2>
+      <ul class="matches" id="matches"></ul>
+    </section>
+  </div>
+
+  <footer>
+    <div><b>Custom games only.</b> Players are team members only. Numbers in brackets are what each percentage rests on (rounds, kills or deaths); small numbers move a lot.</div>
+    <div><b>KOST</b> is the share of rounds where a player got a Kill, did the Objective, Survived, or was Traded (a teammate got a kill within 3 seconds of their death). Objective only counts plants and defuses the coach has confirmed.</div>
+    <div><b>Opening kill rate</b> is the share of rounds where our team got the first kill. Data comes from the game's replay files.</div>
+  </footer>
+</div>
+
+<script>
+"use strict";
+const DATA = {"generated": "2026-10-16T23:03", "team_name": "Psycho_J team", "map_pool": ["Bank", "Border", "Chalet", "Clubhouse", "Consulate", "Kafe Dostoyevsky", "Lair", "Nighthaven Labs", "Fortress"], "maps": ["Clubhouse", "Fortress", "Nighthaven Labs"], "matches": [{"date": "2026-10-16", "map": "Nighthaven Labs", "opponent": "SVX", "us": 4, "them": 8, "checked": false}, {"date": "2026-10-16", "map": "Clubhouse", "opponent": "SVX", "us": 5, "them": 7, "checked": false}, {"date": "2026-10-15", "map": "Fortress", "opponent": null, "us": 0, "them": 6, "checked": false}, {"date": "2026-10-15", "map": "Fortress", "opponent": null, "us": 4, "them": 3, "checked": false}, {"date": "2026-10-12", "map": "Fortress", "opponent": "TeamExample", "us": 5, "them": 7, "checked": true}, {"date": "2026-10-12", "map": "Nighthaven Labs", "opponent": "TeamExample", "us": 5, "them": 7, "checked": true}, {"date": "2026-10-10", "map": "Fortress", "opponent": null, "us": 6, "them": 6, "checked": false}, {"date": "2026-10-10", "map": "Clubhouse", "opponent": null, "us": 3, "them": 9, "checked": false}], "scopes": {"all": {"players": [{"player": "Syrex-.", "rounds": 24, "kills": 16, "deaths": 17, "kd": 0.94, "kills_per_round": 0.67, "kost": 0.708, "kost_rounds": 17, "kost_parts": {"K": 12, "O": 0, "S": 7, "T": 5}, "headshot_rate": 0.5, "headshots": 8, "opening_kills": 2, "opening_deaths": 2, "trade_kills": 1, "traded_deaths": 5, "traded_death_share": 0.294, "survival_rate": 0.292, "survived": 7, "operators": {"Mute": 1, "Jager": 1, "Sentry": 1, "Azami": 1, "Solis": 1, "Fenrir": 1, "Nomad": 2, "Blackbeard": 5, "Sledge": 2, "Striker": 1, "Grim": 1, "Blitz": 1, "Mira": 2, "Clash": 1, "Denari": 2, "Bandit": 1}}, {"player": "Jes.77", "rounds": 84, "kills": 65, "deaths": 67, "kd": 0.97, "kills_per_round": 0.77, "kost": 0.643, "kost_rounds": 54, "kost_parts": {"K": 46, "O": 0, "S": 17, "T": 5}, "headshot_rate": 0.538, "headshots": 35, "opening_kills": 7, "opening_deaths": 9, "trade_kills": 12, "traded_deaths": 5, "traded_death_share": 0.075, "survival_rate": 0.202, "survived": 17, "operators": {"Lesion": 2, "Goyo": 13, "Bandit": 1, "Vigil": 2, "Solis": 3, "Ash": 8, "Ying": 1, "Deimos": 4, "Nomad": 1, "Blitz": 1, "Jager": 9, "Wamai": 6, "Twitch": 16, "Zofia": 6, "Melusi": 1, "Warden": 1, "Ela": 1, "Capitao": 1, "Blackbeard": 1, "Striker": 1, "Mira": 1, "Mute": 1, "Grim": 2, "Fenrir": 1}}, {"player": "zCobrx", "rounds": 84, "kills": 59, "deaths": 62, "kd": 0.95, "kills_per_round": 0.7, "kost": 0.631, "kost_rounds": 53, "kost_parts": {"K": 44, "O": 4, "S": 22, "T": 6}, "headshot_rate": 0.661, "headshots": 39, "opening_kills": 6, "opening_deaths": 7, "trade_kills": 9, "traded_deaths": 6, "traded_death_share": 0.097, "survival_rate": 0.262, "survived": 22, "operators": {"Warden": 1, "Mira": 2, "Wamai": 5, "Mute": 3, "Bandit": 4, "Grim": 1, "Ace": 19, "Thermite": 14, "Castle": 7, "Fenrir": 6, "Denari": 9, "Flores": 1, "Twitch": 5, "Kaid": 3, "Hibana": 2, "Smoke": 1, "Noor": 1}}, {"player": "Ren.--", "rounds": 72, "kills": 48, "deaths": 54, "kd": 0.89, "kills_per_round": 0.67, "kost": 0.556, "kost_rounds": 40, "kost_parts": {"K": 33, "O": 1, "S": 18, "T": 4}, "headshot_rate": 0.375, "headshots": 18, "opening_kills": 8, "opening_deaths": 7, "trade_kills": 7, "traded_deaths": 4, "traded_death_share": 0.074, "survival_rate": 0.25, "survived": 18, "operators": {"Goyo": 10, "Wamai": 3, "Smoke": 8, "Ram": 4, "Flores": 7, "Montagne": 1, "Blackbeard": 2, "Kali": 4, "Mute": 6, "Noor": 2, "Ying": 6, "Glaz": 2, "Nomad": 6, "Rauora": 1, "Iana": 1, "Tachanka": 1, "Clash": 1, "Lion": 1, "Nokk": 1, "Warden": 1, "Pulse": 1, "Vigil": 1, "Azami": 1, "Doc": 1}}, {"player": "ARCTIc.SHZ", "rounds": 84, "kills": 43, "deaths": 73, "kd": 0.59, "kills_per_round": 0.51, "kost": 0.548, "kost_rounds": 46, "kost_parts": {"K": 32, "O": 0, "S": 11, "T": 14}, "headshot_rate": 0.465, "headshots": 20, "opening_kills": 11, "opening_deaths": 13, "trade_kills": 3, "traded_deaths": 14, "traded_death_share": 0.192, "survival_rate": 0.131, "survived": 11, "operators": {"Echo": 4, "Castle": 6, "Deimos": 8, "Grim": 4, "Capitao": 3, "Blitz": 11, "Nomad": 1, "Wamai": 5, "Goyo": 6, "Azami": 7, "Flores": 1, "Mira": 6, "Pulse": 3, "Montagne": 2, "Ying": 2, "Dokkaebi": 4, "Smoke": 3, "Thorn": 1, "Blackbeard": 6, "Lesion": 1}}, {"player": "Psycho_J.", "rounds": 48, "kills": 26, "deaths": 41, "kd": 0.63, "kills_per_round": 0.54, "kost": 0.479, "kost_rounds": 23, "kost_parts": {"K": 19, "O": 2, "S": 7, "T": 5}, "headshot_rate": 0.577, "headshots": 15, "opening_kills": 2, "opening_deaths": 6, "trade_kills": 5, "traded_deaths": 5, "traded_death_share": 0.122, "survival_rate": 0.146, "survived": 7, "operators": {"Wamai": 2, "Smoke": 5, "Jager": 2, "Hibana": 1, "Amaru": 1, "Zofia": 4, "Thatcher": 1, "Mira": 2, "Clash": 1, "Thorn": 6, "Blackbeard": 5, "Mute": 6, "Thermite": 6, "Buck": 6}}], "team": {"round_win_rate": {"value": {"Clubhouse / attack": {"rate": 0.333, "won": 4, "played": 12}, "Clubhouse / defence": {"rate": 0.333, "won": 4, "played": 12}, "Fortress / attack": {"rate": 0.278, "won": 5, "played": 18}, "Fortress / defence": {"rate": 0.556, "won": 10, "played": 18}, "Nighthaven Labs / attack": {"rate": 0.417, "won": 5, "played": 12}, "Nighthaven Labs / defence": {"rate": 0.333, "won": 4, "played": 12}, "all": {"rate": 0.381, "won": 32, "played": 84}}, "based_on": 84}, "opening_kill_rate": {"value": 0.44, "based_on": 84}, "win_rate_after_opening": {"value": {"after_winning_opening": {"rate": 0.541, "rounds": 37}, "after_losing_opening": {"rate": 0.255, "rounds": 47}}, "based_on": 84}, "post_plant_success": {"value": 0.556, "based_on": 9}, "retake_success": {"value": 0.429, "based_on": 14}}}, "Clubhouse": {"players": [{"player": "zCobrx", "rounds": 24, "kills": 18, "deaths": 17, "kd": 1.06, "kills_per_round": 0.75, "kost": 0.708, "kost_rounds": 17, "kost_parts": {"K": 14, "O": 2, "S": 7, "T": 2}, "headshot_rate": 0.444, "headshots": 8, "opening_kills": 3, "opening_deaths": 2, "trade_kills": 1, "traded_deaths": 2, "traded_death_share": 0.118, "survival_rate": 0.292, "survived": 7, "operators": {"Warden": 1, "Mira": 2, "Wamai": 4, "Mute": 3, "Bandit": 1, "Grim": 1, "Ace": 7, "Thermite": 2, "Hibana": 2, "Denari": 1}}, {"player": "ARCTIc.SHZ", "rounds": 24, "kills": 15, "deaths": 21, "kd": 0.71, "kills_per_round": 0.62, "kost": 0.708, "kost_rounds": 17, "kost_parts": {"K": 12, "O": 0, "S": 3, "T": 6}, "headshot_rate": 0.4, "headshots": 6, "opening_kills": 4, "opening_deaths": 2, "trade_kills": 1, "traded_deaths": 6, "traded_death_share": 0.286, "survival_rate": 0.125, "survived": 3, "operators": {"Echo": 4, "Castle": 6, "Deimos": 2, "Grim": 3, "Capitao": 3, "Blitz": 2, "Nomad": 1, "Blackbeard": 1, "Azami": 2}}, {"player": "Jes.77", "rounds": 24, "kills": 17, "deaths": 20, "kd": 0.85, "kills_per_round": 0.71, "kost": 0.542, "kost_rounds": 13, "kost_parts": {"K": 11, "O": 0, "S": 4, "T": 1}, "headshot_rate": 0.529, "headshots": 9, "opening_kills": 1, "opening_deaths": 5, "trade_kills": 4, "traded_deaths": 1, "traded_death_share": 0.05, "survival_rate": 0.167, "survived": 4, "operators": {"Lesion": 2, "Goyo": 4, "Bandit": 1, "Vigil": 2, "Solis": 1, "Ash": 3, "Ying": 1, "Deimos": 1, "Nomad": 1, "Blitz": 1, "Capitao": 1, "Twitch": 1, "Blackbeard": 1, "Zofia": 1, "Striker": 1, "Mira": 1, "Mute": 1}}, {"player": "Ren.--", "rounds": 24, "kills": 15, "deaths": 18, "kd": 0.83, "kills_per_round": 0.62, "kost": 0.5, "kost_rounds": 12, "kost_parts": {"K": 9, "O": 1, "S": 6, "T": 1}, "headshot_rate": 0.2, "headshots": 3, "opening_kills": 2, "opening_deaths": 2, "trade_kills": 2, "traded_deaths": 1, "traded_death_share": 0.056, "survival_rate": 0.25, "survived": 6, "operators": {"Goyo": 4, "Wamai": 2, "Smoke": 3, "Ram": 3, "Flores": 3, "Montagne": 1, "Blackbeard": 2, "Kali": 1, "Ying": 2, "Noor": 1, "Tachanka": 1, "Clash": 1}}, {"player": "Psycho_J.", "rounds": 12, "kills": 7, "deaths": 11, "kd": 0.64, "kills_per_round": 0.58, "kost": 0.5, "kost_rounds": 6, "kost_parts": {"K": 6, "O": 0, "S": 1, "T": 1}, "headshot_rate": 0.714, "headshots": 5, "opening_kills": 0, "opening_deaths": 1, "trade_kills": 3, "traded_deaths": 1, "traded_death_share": 0.091, "survival_rate": 0.083, "survived": 1, "operators": {"Wamai": 2, "Smoke": 2, "Jager": 2, "Hibana": 1, "Amaru": 1, "Zofia": 3, "Thatcher": 1}}], "team": {"round_win_rate": {"value": {"Clubhouse / attack": {"rate": 0.333, "won": 4, "played": 12}, "Clubhouse / defence": {"rate": 0.333, "won": 4, "played": 12}, "all": {"rate": 0.333, "won": 8, "played": 24}}, "based_on": 24}, "opening_kill_rate": {"value": 0.375, "based_on": 24}, "win_rate_after_opening": {"value": {"after_winning_opening": {"rate": 0.556, "rounds": 9}, "after_losing_opening": {"rate": 0.2, "rounds": 15}}, "based_on": 24}, "post_plant_success": {"value": 0.4, "based_on": 5}, "retake_success": {"value": 0.167, "based_on": 6}}}, "Fortress": {"players": [{"player": "Jes.77", "rounds": 36, "kills": 35, "deaths": 29, "kd": 1.21, "kills_per_round": 0.97, "kost": 0.75, "kost_rounds": 27, "kost_parts": {"K": 24, "O": 0, "S": 7, "T": 3}, "headshot_rate": 0.571, "headshots": 20, "opening_kills": 4, "opening_deaths": 3, "trade_kills": 6, "traded_deaths": 3, "traded_death_share": 0.103, "survival_rate": 0.194, "survived": 7, "operators": {"Goyo": 6, "Jager": 6, "Wamai": 6, "Twitch": 11, "Zofia": 5, "Ash": 2}}, {"player": "zCobrx", "rounds": 36, "kills": 31, "deaths": 27, "kd": 1.15, "kills_per_round": 0.86, "kost": 0.694, "kost_rounds": 25, "kost_parts": {"K": 23, "O": 1, "S": 9, "T": 2}, "headshot_rate": 0.774, "headshots": 24, "opening_kills": 2, "opening_deaths": 2, "trade_kills": 8, "traded_deaths": 2, "traded_death_share": 0.074, "survival_rate": 0.25, "survived": 9, "operators": {"Castle": 6, "Bandit": 3, "Fenrir": 5, "Thermite": 12, "Denari": 1, "Kaid": 3, "Ace": 6}}, {"player": "Syrex-.", "rounds": 12, "kills": 7, "deaths": 9, "kd": 0.78, "kills_per_round": 0.58, "kost": 0.667, "kost_rounds": 8, "kost_parts": {"K": 5, "O": 0, "S": 3, "T": 4}, "headshot_rate": 0.429, "headshots": 3, "opening_kills": 0, "opening_deaths": 1, "trade_kills": 0, "traded_deaths": 4, "traded_death_share": 0.444, "survival_rate": 0.25, "survived": 3, "operators": {"Blackbeard": 4, "Grim": 1, "Blitz": 1, "Mira": 2, "Clash": 1, "Denari": 2, "Bandit": 1}}, {"player": "Ren.--", "rounds": 36, "kills": 24, "deaths": 25, "kd": 0.96, "kills_per_round": 0.67, "kost": 0.611, "kost_rounds": 22, "kost_parts": {"K": 19, "O": 0, "S": 11, "T": 2}, "headshot_rate": 0.417, "headshots": 10, "opening_kills": 5, "opening_deaths": 4, "trade_kills": 3, "traded_deaths": 2, "traded_death_share": 0.08, "survival_rate": 0.306, "survived": 11, "operators": {"Mute": 6, "Smoke": 5, "Goyo": 6, "Noor": 1, "Ying": 4, "Glaz": 2, "Nomad": 5, "Flores": 2, "Rauora": 1, "Kali": 3, "Iana": 1}}, {"player": "ARCTIc.SHZ", "rounds": 36, "kills": 15, "deaths": 32, "kd": 0.47, "kills_per_round": 0.42, "kost": 0.472, "kost_rounds": 17, "kost_parts": {"K": 12, "O": 0, "S": 4, "T": 5}, "headshot_rate": 0.467, "headshots": 7, "opening_kills": 4, "opening_deaths": 6, "trade_kills": 1, "traded_deaths": 5, "traded_death_share": 0.156, "survival_rate": 0.111, "survived": 4, "operators": {"Wamai": 5, "Goyo": 5, "Azami": 4, "Deimos": 5, "Flores": 1, "Grim": 1, "Blitz": 3, "Montagne": 1, "Dokkaebi": 3, "Smoke": 3, "Thorn": 1, "Blackbeard": 4}}, {"player": "Psycho_J.", "rounds": 24, "kills": 10, "deaths": 21, "kd": 0.48, "kills_per_round": 0.42, "kost": 0.375, "kost_rounds": 9, "kost_parts": {"K": 7, "O": 0, "S": 3, "T": 3}, "headshot_rate": 0.5, "headshots": 5, "opening_kills": 2, "opening_deaths": 3, "trade_kills": 1, "traded_deaths": 3, "traded_death_share": 0.143, "survival_rate": 0.125, "survived": 3, "operators": {"Mira": 2, "Clash": 1, "Thorn": 5, "Zofia": 1, "Blackbeard": 5, "Smoke": 2, "Mute": 2, "Buck": 6}}], "team": {"round_win_rate": {"value": {"Fortress / attack": {"rate": 0.278, "won": 5, "played": 18}, "Fortress / defence": {"rate": 0.556, "won": 10, "played": 18}, "all": {"rate": 0.417, "won": 15, "played": 36}}, "based_on": 36}, "opening_kill_rate": {"value": 0.472, "based_on": 36}, "win_rate_after_opening": {"value": {"after_winning_opening": {"rate": 0.529, "rounds": 17}, "after_losing_opening": {"rate": 0.316, "rounds": 19}}, "based_on": 36}, "post_plant_success": {"value": 0.0, "based_on": 1}, "retake_success": {"value": 0.8, "based_on": 5}}}, "Nighthaven Labs": {"players": [{"player": "Syrex-.", "rounds": 12, "kills": 9, "deaths": 8, "kd": 1.12, "kills_per_round": 0.75, "kost": 0.75, "kost_rounds": 9, "kost_parts": {"K": 7, "O": 0, "S": 4, "T": 1}, "headshot_rate": 0.556, "headshots": 5, "opening_kills": 2, "opening_deaths": 1, "trade_kills": 1, "traded_deaths": 1, "traded_death_share": 0.125, "survival_rate": 0.333, "survived": 4, "operators": {"Mute": 1, "Jager": 1, "Sentry": 1, "Azami": 1, "Solis": 1, "Fenrir": 1, "Nomad": 2, "Blackbeard": 1, "Sledge": 2, "Striker": 1}}, {"player": "Psycho_J.", "rounds": 12, "kills": 9, "deaths": 9, "kd": 1.0, "kills_per_round": 0.75, "kost": 0.667, "kost_rounds": 8, "kost_parts": {"K": 6, "O": 2, "S": 3, "T": 1}, "headshot_rate": 0.556, "headshots": 5, "opening_kills": 0, "opening_deaths": 2, "trade_kills": 1, "traded_deaths": 1, "traded_death_share": 0.111, "survival_rate": 0.25, "survived": 3, "operators": {"Thorn": 1, "Mute": 4, "Smoke": 1, "Thermite": 6}}, {"player": "Jes.77", "rounds": 24, "kills": 13, "deaths": 18, "kd": 0.72, "kills_per_round": 0.54, "kost": 0.583, "kost_rounds": 14, "kost_parts": {"K": 11, "O": 0, "S": 6, "T": 1}, "headshot_rate": 0.462, "headshots": 6, "opening_kills": 2, "opening_deaths": 1, "trade_kills": 2, "traded_deaths": 1, "traded_death_share": 0.056, "survival_rate": 0.25, "survived": 6, "operators": {"Solis": 2, "Melusi": 1, "Goyo": 3, "Warden": 1, "Ela": 1, "Deimos": 3, "Ash": 3, "Twitch": 4, "Grim": 2, "Jager": 3, "Fenrir": 1}}, {"player": "ARCTIc.SHZ", "rounds": 24, "kills": 13, "deaths": 20, "kd": 0.65, "kills_per_round": 0.54, "kost": 0.5, "kost_rounds": 12, "kost_parts": {"K": 8, "O": 0, "S": 4, "T": 3}, "headshot_rate": 0.538, "headshots": 7, "opening_kills": 3, "opening_deaths": 5, "trade_kills": 1, "traded_deaths": 3, "traded_death_share": 0.15, "survival_rate": 0.167, "survived": 4, "operators": {"Mira": 6, "Pulse": 3, "Montagne": 1, "Blitz": 6, "Ying": 2, "Blackbeard": 1, "Dokkaebi": 1, "Deimos": 1, "Lesion": 1, "Azami": 1, "Goyo": 1}}, {"player": "Ren.--", "rounds": 12, "kills": 9, "deaths": 11, "kd": 0.82, "kills_per_round": 0.75, "kost": 0.5, "kost_rounds": 6, "kost_parts": {"K": 5, "O": 0, "S": 1, "T": 1}, "headshot_rate": 0.556, "headshots": 5, "opening_kills": 1, "opening_deaths": 1, "trade_kills": 2, "traded_deaths": 1, "traded_death_share": 0.091, "survival_rate": 0.083, "survived": 1, "operators": {"Flores": 2, "Lion": 1, "Nomad": 1, "Ram": 1, "Nokk": 1, "Warden": 1, "Wamai": 1, "Pulse": 1, "Vigil": 1, "Azami": 1, "Doc": 1}}, {"player": "zCobrx", "rounds": 24, "kills": 10, "deaths": 18, "kd": 0.56, "kills_per_round": 0.42, "kost": 0.458, "kost_rounds": 11, "kost_parts": {"K": 7, "O": 1, "S": 6, "T": 2}, "headshot_rate": 0.7, "headshots": 7, "opening_kills": 1, "opening_deaths": 3, "trade_kills": 0, "traded_deaths": 2, "traded_death_share": 0.111, "survival_rate": 0.25, "survived": 6, "operators": {"Denari": 7, "Wamai": 1, "Fenrir": 1, "Castle": 1, "Flores": 1, "Twitch": 5, "Ace": 6, "Smoke": 1, "Noor": 1}}], "team": {"round_win_rate": {"value": {"Nighthaven Labs / attack": {"rate": 0.417, "won": 5, "played": 12}, "Nighthaven Labs / defence": {"rate": 0.333, "won": 4, "played": 12}, "all": {"rate": 0.375, "won": 9, "played": 24}}, "based_on": 24}, "opening_kill_rate": {"value": 0.458, "based_on": 24}, "win_rate_after_opening": {"value": {"after_winning_opening": {"rate": 0.545, "rounds": 11}, "after_losing_opening": {"rate": 0.231, "rounds": 13}}, "based_on": 24}, "post_plant_success": {"value": 1.0, "based_on": 3}, "retake_success": {"value": 0.333, "based_on": 3}}}}};
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pct = (x) => (x === null || x === undefined ? "–" : Math.round(x * 100) + "%");
+const n = (count) => `<span class="n">(${count})</span>`;
+let scope = "all";
+let sort = { key: "kost", desc: true };
+try { const saved = localStorage.getItem("r6stats.scope"); if (saved && DATA.scopes[saved]) scope = saved; } catch (e) {}
+
+const COLS = [
+  { key: "player", label: "Player", cell: (p) => esc(p.player), val: (p) => p.player.toLowerCase(), cls: "player" },
+  { key: "rounds", label: "Rounds", cell: (p) => p.rounds, val: (p) => p.rounds },
+  { key: "kost", label: "KOST", cell: (p) => `${pct(p.kost)}${n(p.rounds)}<span class="kost-bar" aria-hidden="true"><i style="width:${Math.round((p.kost || 0) * 100)}%"></i></span>`,
+    title: (p) => `Kill ${p.kost_parts.K} · Objective ${p.kost_parts.O} · Survived ${p.kost_parts.S} · Traded ${p.kost_parts.T} rounds`, val: (p) => p.kost ?? -1 },
+  { key: "kd", label: "K/D", cell: (p) => `${p.kd ?? "–"}<span class="n">${p.kills}-${p.deaths}</span>`, val: (p) => p.kd ?? -1 },
+  { key: "kpr", label: "Kills/round", cell: (p) => p.kills_per_round ?? "–", val: (p) => p.kills_per_round ?? -1 },
+  { key: "hs", label: "Headshot", cell: (p) => `${pct(p.headshot_rate)}${n(p.kills)}`, val: (p) => p.headshot_rate ?? -1 },
+  { key: "opening", label: "Opening K-D", cell: (p) => `${p.opening_kills}-${p.opening_deaths}`, val: (p) => p.opening_kills - p.opening_deaths },
+  { key: "tradek", label: "Trade kills", cell: (p) => p.trade_kills, val: (p) => p.trade_kills },
+  { key: "traded", label: "Deaths traded", cell: (p) => `${pct(p.traded_death_share)}${n(p.deaths)}`, val: (p) => p.traded_death_share ?? -1 },
+  { key: "surv", label: "Survival", cell: (p) => `${pct(p.survival_rate)}${n(p.rounds)}`, val: (p) => p.survival_rate ?? -1 },
+  { key: "ops", label: "Most played", cell: (p) => esc(Object.entries(p.operators).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([o, c]) => `${o} ${c}`).join(", ")), val: () => 0, cls: "ops" },
+];
+
+function header() {
+  const m = DATA.matches;
+  const rounds = DATA.scopes.all?.team.round_win_rate?.value?.all?.played ?? 0;
+  const first = m[m.length - 1]?.date, last = m[0]?.date;
+  $("#meta").innerHTML = [`Custom games`, `${m.length} matches`, `${rounds} rounds`, `${first} to ${last}`,
+    `Updated ${DATA.generated.replace("T", " ")}`].map((t) => `<span>${esc(t)}</span>`).join("");
+  const unchecked = m.filter((x) => !x.checked).length;
+  const notice = $("#notice");
+  notice.hidden = !unchecked;
+  notice.textContent = `${unchecked} of ${m.length} matches still have items for the coach to check (mainly plants), so some numbers may change.`;
+}
+
+function tabs() {
+  const names = ["all", ...DATA.maps];
+  $("#tabs").innerHTML = names.map((k) => `<button type="button" id="tab-${esc(k).replace(/\W/g, "")}" data-scope="${esc(k)}" aria-pressed="${k === scope}">${k === "all" ? "All maps" : esc(k)}${k !== "all" && !DATA.map_pool.includes(k) ? '<span class="pool">not in pool</span>' : ""}</button>`).join("");
+  $("#tabs").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    scope = b.dataset.scope;
+    try { localStorage.setItem("r6stats.scope", scope); } catch (e) {}
+    render();
+  }));
+}
+
+function tiles(t) {
+  const wr = t.round_win_rate?.value?.all, after = t.win_rate_after_opening?.value || {};
+  const tile = (label, value, base) => `<div class="tile"><span class="label">${label}</span><span class="value">${value}</span><span class="base">${base}</span></div>`;
+  $("#tiles").innerHTML = [
+    tile("Round win rate", pct(wr?.rate), `${wr?.won ?? 0} of ${wr?.played ?? 0} rounds`),
+    tile("Opening kill rate", pct(t.opening_kill_rate?.value), `${t.opening_kill_rate?.based_on ?? 0} rounds with an opening kill`),
+    tile("Win after first kill", pct(after.after_winning_opening?.rate), `${after.after_winning_opening?.rounds ?? 0} rounds`),
+    tile("Win after first death", pct(after.after_losing_opening?.rate), `${after.after_losing_opening?.rounds ?? 0} rounds`),
+    tile("Post-plant win", pct(t.post_plant_success?.value), `${t.post_plant_success?.based_on ?? 0} rounds we planted`),
+    tile("Retake win", pct(t.retake_success?.value), `${t.retake_success?.based_on ?? 0} rounds they planted`),
+  ].join("");
+}
+
+function players(list) {
+  const col = COLS.find((c) => c.key === sort.key) || COLS[2];
+  const rows = [...list].sort((a, b) => { const x = col.val(a), y = col.val(b); return (x < y ? -1 : x > y ? 1 : 0) * (sort.desc ? -1 : 1); });
+  $("#players").innerHTML = `<thead><tr>${COLS.map((c) => `<th scope="col"${c.key === sort.key ? ` aria-sort="${sort.desc ? "descending" : "ascending"}"` : ""}${c.cls === "ops" ? ' style="text-align:left"' : ""}><button type="button" data-key="${c.key}">${c.label}${c.key === sort.key ? (sort.desc ? " ▾" : " ▴") : ""}</button></th>`).join("")}</tr></thead>
+    <tbody>${rows.map((p) => `<tr>${COLS.map((c) => `<td class="${c.cls || "num"}"${c.title ? ` title="${esc(c.title(p))}"` : ""}>${c.cell(p)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${COLS.length}" class="hint">No team rounds on this map yet.</td></tr>`}</tbody>`;
+  $("#players").querySelectorAll("th button").forEach((b) => b.addEventListener("click", () => {
+    sort = sort.key === b.dataset.key ? { key: sort.key, desc: !sort.desc } : { key: b.dataset.key, desc: b.dataset.key !== "player" };
+    render();
+  }));
+}
+
+function sides(t) {
+  const groups = { attack: { won: 0, played: 0 }, defence: { won: 0, played: 0 } };
+  for (const [k, v] of Object.entries(t.round_win_rate?.value || {})) {
+    if (k === "all") continue;
+    const side = k.split(" / ").pop();
+    if (groups[side]) { groups[side].won += v.won; groups[side].played += v.played; }
+  }
+  $("#sides").innerHTML = Object.entries(groups).map(([side, g]) => {
+    const rate = g.played ? g.won / g.played : null;
+    return `<div class="side-row"><span>${side === "attack" ? "Attack" : "Defence"}</span><span class="track"><i style="width:${Math.round((rate || 0) * 100)}%"></i></span><span class="num">${pct(rate)} <span class="hint">(${g.won} of ${g.played})</span></span></div>`;
+  }).join("");
+}
+
+function matches() {
+  const list = DATA.matches.filter((m) => scope === "all" || m.map === scope);
+  $("#matches").innerHTML = list.map((m) => {
+    const r = m.us > m.them ? "w" : m.us < m.them ? "l" : "d";
+    return `<li><span class="mono hint">${esc(m.date)}</span><span class="what">${esc(m.map)}${m.opponent ? ` <span class="hint">vs ${esc(m.opponent)}</span>` : ""}</span><span class="result ${r}">${{ w: "W", l: "L", d: "D" }[r]} ${m.us}-${m.them}</span></li>`;
+  }).join("");
+}
+
+function render() {
+  const s = DATA.scopes[scope] || DATA.scopes.all;
+  tabs();
+  tiles(s.team);
+  players(s.players);
+  sides(s.team);
+  matches();
+}
+
+if (DATA) { header(); render(); }
+else { $("#meta").textContent = "No data in this page yet."; }
+</script>
